@@ -8,7 +8,7 @@ use std::{iter,
 use mdbook::renderer::RenderContext;
 use mdbook::book::{BookItem, Chapter};
 use epub_builder::{EpubBuilder, EpubContent, ZipLibrary};
-use pulldown_cmark::{html, Parser, Options, Event, CowStr, Tag};
+use pulldown_cmark::{CodeBlockKind, html, Parser, Options, Event, CowStr, Tag};
 use super::Error;
 use handlebars::{Handlebars, RenderError};
 
@@ -139,9 +139,11 @@ impl<'a> Generator<'a> {
         let p = Generator::new_cmark_parser(&ch.content);
         let mut converter = EventQuoteConverter::new(self.config.curly_quotes);
         let mut comment_remover = EventHtmlConverter::new(self.config.remove_html_comments);
+        let mut rust_filter = RustCodeBlockFilter::new(self.config.enable_rust_codeblock_filter);
         let events = p
             .map(|event| converter.convert(event))
-            .map(|event| comment_remover.convert(event));
+            .map(|event| comment_remover.convert(event))
+            .map(|event| rust_filter.convert(event));
 
         html::push_html(&mut body, events);
 
@@ -416,7 +418,7 @@ impl EventHtmlConverter {
 
 #[test]
 fn tests_remove_html_comments() {
-    let content =
+    let input =
 r#"<!-- html comment -->
    <!-- allow html block indent. remove double hyphen in a html comment
 -- -- -- --
@@ -432,10 +434,140 @@ r#"<!-- removed -->
 "#;
     let mut body = String::new();
     let mut comment_remover = EventHtmlConverter::new(true);
-    let p = Generator::new_cmark_parser(content);
+    let p = Generator::new_cmark_parser(input);
     let events = p.map(|event| comment_remover.convert(event));
     html::push_html(&mut body, events);
     print!("{:?}", body);
 
     assert_eq!(expected, body);
 }
+
+struct RustCodeBlockFilter {
+    enabled: bool,
+    in_a_rust_codeblock: bool,
+}
+
+impl RustCodeBlockFilter {
+    fn new(enabled: bool) -> Self {
+        RustCodeBlockFilter {
+            enabled,
+            in_a_rust_codeblock: false,
+        }
+    }
+
+    fn convert<'a>(&mut self, event: Event<'a>) -> Event<'a> {
+        if !self.enabled {
+            return event;
+        }
+
+        match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(ref info))) => {
+                if info.starts_with("rust") {
+                    self.in_a_rust_codeblock = true
+                }
+
+                event
+            }
+            Event::End(Tag::CodeBlock(_)) if self.in_a_rust_codeblock => {
+                self.in_a_rust_codeblock = false;
+
+                event
+            }
+            Event::Text(ref text) if self.in_a_rust_codeblock => {
+                let filtered = filter_rust_code(text);
+
+                Event::Text(CowStr::from(filtered))
+            }
+            _ => event
+        }
+    }
+}
+
+fn filter_rust_code(code: &str) -> String {
+    code.split("\n")
+        .filter(|s| !s.starts_with("#"))
+        .collect::<Vec<&str>>().join("\n")
+}
+
+#[test]
+fn tests_rust_codeblock_filter_1() {
+    let input =
+r#"
+```rust
+fn main() {
+    let num = 1;
+}
+```
+"#;
+
+    let expected =
+r#"<pre><code class="language-rust">fn main() {
+    let num = 1;
+}
+</code></pre>
+"#;
+
+    let mut body = String::new();
+    let mut filter = RustCodeBlockFilter::new(true);
+    let parser = Generator::new_cmark_parser(input);
+    let events = parser.map(|event| filter.convert(event));
+    html::push_html(&mut body, events);
+
+    assert_eq!(expected, body);
+}
+
+#[test]
+fn tests_rust_codeblock_filter_2() {
+    let input =
+r#"
+```rust
+#fn main() {
+    let num = 1;
+
+    println!("number is {}", num);
+#}
+```
+"#;
+
+    let expected =
+r#"<pre><code class="language-rust">    let num = 1;
+
+    println!(&quot;number is {}&quot;, num);
+</code></pre>
+"#;
+
+    let mut body = String::new();
+    let mut filter = RustCodeBlockFilter::new(true);
+    let parser = Generator::new_cmark_parser(input);
+    let events = parser.map(|event| filter.convert(event));
+    html::push_html(&mut body, events);
+
+    assert_eq!(expected, body);
+}
+
+#[ignore]
+#[test]
+fn tests_rust_codeblock_filter_3() {
+    let input =
+r#"
+```rust ignored
+#fn main() {
+    let num = 1;
+#}
+```
+"#;
+
+    let expected =
+r#"<pre><code class="language-rust ignored">    let num = 1;
+</code></pre>
+"#;
+
+    let mut body = String::new();
+    let mut filter = RustCodeBlockFilter::new(true);
+    let parser = Generator::new_cmark_parser(input);
+    let events = parser.map(|event| filter.convert(event));
+    html::push_html(&mut body, events);
+
+    assert_eq!(expected, body);
+}
+

@@ -25,6 +25,8 @@ pub struct Config {
     pub curly_quotes: bool,
     /// Remove HTML comments to avoid warnings about comments containing double hyphens.
     pub remove_html_comments: bool,
+    /// Enable Rust codeblock filter
+    pub enable_rust_codeblock_filter: bool,
 }
 
 impl Config {
@@ -71,6 +73,7 @@ impl Default for Config {
             no_section_label: false,
             curly_quotes: false,
             remove_html_comments: false,
+            enable_rust_codeblock_filter: false,
         }
     }
 }
