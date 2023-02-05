@@ -23,6 +23,8 @@ pub struct Config {
     pub no_section_label: bool,
     /// Use "smart quotes" instead of the usual `"` character.
     pub curly_quotes: bool,
+    /// Remove HTML comments to avoid warnings about comments containing double hyphens.
+    pub remove_html_comments: bool,
 }
 
 impl Config {
@@ -68,6 +70,7 @@ impl Default for Config {
             additional_resources: Vec::new(),
             no_section_label: false,
             curly_quotes: false,
+            remove_html_comments: false,
         }
     }
 }

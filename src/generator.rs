@@ -138,7 +138,10 @@ impl<'a> Generator<'a> {
         let mut body = String::new();
         let p = Generator::new_cmark_parser(&ch.content);
         let mut converter = EventQuoteConverter::new(self.config.curly_quotes);
-        let events = p.map(|event| converter.convert(event));
+        let mut comment_remover = EventHtmlConverter::new(self.config.remove_html_comments);
+        let events = p
+            .map(|event| converter.convert(event))
+            .map(|event| comment_remover.convert(event));
 
         html::push_html(&mut body, events);
 
@@ -365,3 +368,74 @@ fn convert_quotes_to_curly(original_text: &str) -> String {
         .collect()
 }
 
+struct EventHtmlConverter {
+    enabled: bool,
+    comment_lines: bool,
+}
+
+impl EventHtmlConverter {
+    fn new(enabled: bool) -> Self {
+        EventHtmlConverter {
+            enabled,
+            comment_lines: false,
+        }
+    }
+
+    fn convert<'a>(&mut self, event: Event<'a>) -> Event<'a> {
+        if !self.enabled {
+            return event;
+        }
+
+        match event {
+            Event::Html(ref text) if self.comment_lines => {
+                if let Some(_) = text.find("-->") {
+                    self.comment_lines = false;
+                    Event::Html(CowStr::from("-->\n"))
+                } else {
+                    Event::Html(CowStr::from("\n"))
+                }
+            }
+
+            Event::Html(ref text) => {
+                if text.starts_with("<!--") {
+                    if let None = text.find("-->") {
+                        self.comment_lines = true;
+                        return Event::Html(CowStr::from("<!-- removed\n"));
+                    } else {
+                        return Event::Html(CowStr::from("<!-- removed -->\n"));
+                    }
+                }
+
+                return event
+            }
+
+            _ => event
+        }
+    }
+}
+
+#[test]
+fn tests_remove_html_comments() {
+    let content =
+r#"<!-- html comment -->
+   <!-- allow html block indent. remove double hyphen in a html comment
+-- -- -- --
+   --> IGNORED HERE
+Text Block
+"#;
+    let expected =
+r#"<!-- removed -->
+<!-- removed
+
+-->
+<p>Text Block</p>
+"#;
+    let mut body = String::new();
+    let mut comment_remover = EventHtmlConverter::new(true);
+    let p = Generator::new_cmark_parser(content);
+    let events = p.map(|event| comment_remover.convert(event));
+    html::push_html(&mut body, events);
+    print!("{:?}", body);
+
+    assert_eq!(expected, body);
+}
