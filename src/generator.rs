@@ -437,7 +437,6 @@ r#"<!-- removed -->
     let p = Generator::new_cmark_parser(input);
     let events = p.map(|event| comment_remover.convert(event));
     html::push_html(&mut body, events);
-    print!("{:?}", body);
 
     assert_eq!(expected, body);
 }
