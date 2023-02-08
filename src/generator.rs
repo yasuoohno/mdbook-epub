@@ -484,7 +484,7 @@ impl RustCodeBlockFilter {
 
 fn filter_rust_code(code: &str) -> String {
     code.split("\n")
-        .filter(|s| !s.starts_with("#"))
+        .filter(|s| !s.starts_with("# "))
         .collect::<Vec<&str>>().join("\n")
 }
 
@@ -520,11 +520,11 @@ fn tests_rust_codeblock_filter_2() {
     let input =
 r#"
 ```rust
-#fn main() {
+# fn main() {
     let num = 1;
 
     println!("number is {}", num);
-#}
+# }
 ```
 "#;
 
@@ -550,9 +550,9 @@ fn tests_rust_codeblock_filter_3() {
     let input =
 r#"
 ```rust ignored
-#fn main() {
+# fn main() {
     let num = 1;
-#}
+# }
 ```
 "#;
 
